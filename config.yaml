@@ -1,0 +1,33 @@
+providers:
+  opencode_go:
+    enabled: true
+    base_url: "https://api.opencode.ai/zen/go/v1"
+    priority: 1
+  glm_pro:
+    enabled: true
+    base_url: "https://api.z.ai"
+    priority: 2
+  claude_pro:
+    enabled: true
+    priority: 3
+  kimi:
+    enabled: false
+    cli_path: "kimi"
+    priority: 4
+  gemini_pro:
+    enabled: false
+    priority: 5
+
+cache:
+  ttl_seconds: 300
+  db_path: "~/.ai-usage-hub/cache.db"
+
+server:
+  http_port: 6737
+
+scheduler:
+  wait_threshold_percent: 85
+  wait_max_minutes: 30
+  delegate_threshold_percent: 85
+  consolidate_threshold_percent: 70
+  burn_rate_window_minutes: 15

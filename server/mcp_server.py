@@ -17,6 +17,7 @@ from collectors.glm_pro import GLMProCollector
 from collectors.claude_pro import ClaudeProCollector
 from server.cache import SnapshotCache
 from server.scheduler import Scheduler
+from server.forecast import Forecaster, forecast_to_dict
 
 
 def load_config() -> dict:
@@ -68,6 +69,11 @@ def create_server() -> Server:
     )
     collectors = build_collectors(config)
     scheduler = Scheduler(config)
+    sched_cfg = config.get("scheduler", {})
+    forecaster = Forecaster(
+        db_path=cache_cfg.get("db_path", "~/.ai-usage-hub/cache.db"),
+        window_minutes=sched_cfg.get("burn_rate_window_minutes", 15),
+    )
     priority = [
         p for p, cfg in sorted(
             config.get("providers", {}).items(),
@@ -117,6 +123,11 @@ def create_server() -> Server:
             Tool(
                 name="get_spend_today",
                 description="Total USD spent today across all providers",
+                inputSchema={"type": "object", "properties": {}, "required": []},
+            ),
+            Tool(
+                name="get_forecast",
+                description="Burn rate forecasts: %/min, minutes to exhaustion, and whether quota will run out before reset",
                 inputSchema={"type": "object", "properties": {}, "required": []},
             ),
         ]
@@ -171,6 +182,10 @@ def create_server() -> Server:
             total = sum(s.spend_today_usd or 0 for s in snapshots)
             breakdown = {s.provider_id: s.spend_today_usd for s in snapshots if s.spend_today_usd}
             return [TextContent(type="text", text=json.dumps({"total_usd_today": round(total, 2), "breakdown": breakdown}, indent=2))]
+
+        elif name == "get_forecast":
+            forecasts = forecaster.forecast_all(snapshots)
+            return [TextContent(type="text", text=json.dumps([forecast_to_dict(f) for f in forecasts], indent=2))]
 
         return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 

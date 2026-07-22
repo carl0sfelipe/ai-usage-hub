@@ -34,7 +34,15 @@ class GLMProCollector:
                     headers={"Authorization": f"Bearer {key}"},
                 )
                 resp.raise_for_status()
-                data = resp.json()
+                try:
+                    data = resp.json()
+                except Exception:
+                    return ProviderSnapshot(
+                        provider_id=self.provider_id,
+                        plan_name="GLM Pro",
+                        status="error",
+                        error=f"Non-JSON response (HTTP {resp.status_code}): {resp.text[:200]}",
+                    )
         except Exception as e:
             return ProviderSnapshot(
                 provider_id=self.provider_id,

@@ -50,14 +50,14 @@ uv run ai-usage-dashboard
 
 ### OpenCode
 
-Add to `~/.config/opencode/opencode.json`:
-```json
+Add to `~/.config/opencode/opencode.jsonc`:
+```jsonc
 {
-  "mcpServers": {
+  "mcp": {
     "ai-usage-hub": {
-      "command": "uv",
-      "args": ["run", "--directory", "/Users/mini/ai-usage-hub", "python", "-m", "server.mcp_server"],
-      "env": {}
+      "type": "local",
+      "enabled": true,
+      "command": ["uv", "run", "--directory", "/Users/mini/ai-usage-hub", "python", "-m", "server.mcp_server"]
     }
   }
 }
@@ -70,8 +70,18 @@ Add to `~/.hermes/config.yaml`:
 mcp_servers:
   ai-usage-hub:
     command: uv
-    args: ["run", "--directory", "/Users/mini/ai-usage-hub", "python", "-m", "server.mcp_server"]
+    args:
+      - run
+      - --directory
+      - /Users/mini/ai-usage-hub
+      - python
+      - -m
+      - server.mcp_server
 ```
+
+### ZCode
+
+ZCode does not currently support MCP server configuration via its config file (`~/.zcode/v2/config.json`). Use the HTTP API (`http://localhost:6737/status`) as an alternative.
 
 ## Tests
 

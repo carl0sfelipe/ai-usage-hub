@@ -1,4 +1,11 @@
 providers:
+  qwen_token_plan:
+    enabled: true
+    type: local_tracking
+    plan_name: "Qwen Token Plan Pro ($18/mo)"
+    db_path: "~/.local/share/opencode/opencode.db"
+    model_ids: ["qwen3.8-max-preview", "qwen3.7-max"]
+    priority: 0
   opencode_go:
     enabled: true
     base_url: "https://api.opencode.ai/zen/go/v1"

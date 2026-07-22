@@ -15,6 +15,7 @@ from collectors.base import ProviderSnapshot
 from collectors.opencode_go import OpenCodeGoCollector
 from collectors.glm_pro import GLMProCollector
 from collectors.claude_pro import ClaudeProCollector
+from collectors.local_tracker import LocalTokenTracker
 from server.cache import SnapshotCache
 from server.scheduler import Scheduler
 from server.forecast import Forecaster, forecast_to_dict
@@ -30,12 +31,18 @@ def load_config() -> dict:
 def build_collectors(config: dict) -> list:
     collectors = []
     providers = config.get("providers", {})
-    if providers.get("opencode_go", {}).get("enabled"):
-        collectors.append(OpenCodeGoCollector(providers["opencode_go"]))
-    if providers.get("glm_pro", {}).get("enabled"):
-        collectors.append(GLMProCollector(providers["glm_pro"]))
-    if providers.get("claude_pro", {}).get("enabled"):
-        collectors.append(ClaudeProCollector(providers["claude_pro"]))
+    for pid, pcfg in providers.items():
+        if not pcfg.get("enabled"):
+            continue
+        if pcfg.get("type") == "local_tracking":
+            pcfg["provider_id"] = pid
+            collectors.append(LocalTokenTracker(pcfg))
+        elif pid == "opencode_go":
+            collectors.append(OpenCodeGoCollector(pcfg))
+        elif pid == "glm_pro":
+            collectors.append(GLMProCollector(pcfg))
+        elif pid == "claude_pro":
+            collectors.append(ClaudeProCollector(pcfg))
     return collectors
 
 
@@ -130,6 +137,19 @@ def create_server() -> Server:
                 description="Burn rate forecasts: %/min, minutes to exhaustion, and whether quota will run out before reset",
                 inputSchema={"type": "object", "properties": {}, "required": []},
             ),
+            Tool(
+                name="set_provider_limit",
+                description="Set token limit for a provider window (persisted to limits.json)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "provider_id": {"type": "string", "description": "Provider ID (e.g. qwen_token_plan)"},
+                        "window_type": {"type": "string", "description": "rolling_5h | weekly | monthly"},
+                        "limit_tokens": {"type": "number", "description": "Token limit for this window"},
+                    },
+                    "required": ["provider_id", "window_type", "limit_tokens"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -186,6 +206,20 @@ def create_server() -> Server:
         elif name == "get_forecast":
             forecasts = forecaster.forecast_all(snapshots)
             return [TextContent(type="text", text=json.dumps([forecast_to_dict(f) for f in forecasts], indent=2))]
+
+        elif name == "set_provider_limit":
+            pid = arguments.get("provider_id", "")
+            window = arguments.get("window_type", "")
+            limit = arguments.get("limit_tokens")
+            limits_path = Path(__file__).parent.parent / "limits.json"
+            data = json.loads(limits_path.read_text()) if limits_path.exists() else {}
+            if pid not in data:
+                data[pid] = {}
+            if window not in data[pid]:
+                data[pid][window] = {}
+            data[pid][window]["limit_tokens"] = limit
+            limits_path.write_text(json.dumps(data, indent=2) + "\n")
+            return [TextContent(type="text", text=json.dumps({"ok": True, "provider_id": pid, "window_type": window, "limit_tokens": limit}))]
 
         return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 

@@ -1,0 +1,7 @@
+{
+  "qwen_token_plan": {
+    "rolling_5h": { "limit_tokens": null },
+    "weekly": { "limit_tokens": null },
+    "monthly": { "limit_tokens": null, "cost_usd": 18.0 }
+  }
+}

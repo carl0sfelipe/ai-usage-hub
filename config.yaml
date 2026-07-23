@@ -6,6 +6,13 @@ providers:
     db_path: "~/.local/share/opencode/opencode.db"
     model_ids: ["qwen3.8-max-preview", "qwen3.7-max"]
     priority: 0
+  zen_free:
+    enabled: true
+    type: local_tracking
+    plan_name: "OpenCode Zen Free (DeepSeek/Laguna/Nemotron)"
+    db_path: "~/.local/share/opencode/opencode.db"
+    model_ids: ["deepseek-v4-flash-free", "laguna-s-2.1-free", "nemotron-3-ultra-free", "north-mini-code-free", "big-pickle", "mimo-v2.5-free"]
+    priority: 1
   opencode_go:
     enabled: true
     base_url: "https://api.opencode.ai/zen/go/v1"

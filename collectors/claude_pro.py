@@ -1,11 +1,33 @@
 from __future__ import annotations
 
+import json
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 
 from collectors.base import LimitWindow, ProviderSnapshot
-from collectors.vault import get_vault_credential
+
+
+CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+
+
+def _read_credentials() -> dict | None:
+    try:
+        raw = CREDENTIALS_PATH.read_text()
+        return json.loads(raw).get("claudeAiOauth")
+    except Exception:
+        return None
+
+
+def _is_expired(expires_at_ms: int | None) -> bool:
+    if expires_at_ms is None:
+        return True
+    return time.time() * 1000 >= expires_at_ms
 
 
 class ClaudeProCollector:
@@ -14,23 +36,50 @@ class ClaudeProCollector:
     def __init__(self, config: dict):
         pass
 
-    @property
-    def _token(self) -> str:
-        return get_vault_credential("CLAUDE_OAUTH_TOKEN")
+    async def _get_valid_token(self) -> str | None:
+        creds = _read_credentials()
+        if not creds:
+            return None
+        access_token = creds.get("accessToken")
+        expires_at = creds.get("expiresAt")
+        if not access_token:
+            return None
+        if not _is_expired(expires_at):
+            return access_token
+        refresh_token = creds.get("refreshToken")
+        if not refresh_token:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    OAUTH_TOKEN_URL,
+                    json={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": CLIENT_ID,
+                    },
+                )
+                if resp.status_code == 429:
+                    return None
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("access_token") or data.get("accessToken")
+        except Exception:
+            return None
 
     async def fetch(self) -> ProviderSnapshot | None:
-        token = self._token
+        token = await self._get_valid_token()
         if not token:
             return ProviderSnapshot(
                 provider_id=self.provider_id,
                 plan_name="Claude Pro",
                 status="error",
-                error="CLAUDE_OAUTH_TOKEN not found in vault",
+                error="No valid Claude Pro token available (credentials missing, expired, or refresh failed)",
             )
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
-                    "https://api.anthropic.com/api/oauth/usage",
+                    USAGE_URL,
                     headers={"Authorization": f"Bearer {token}"},
                 )
                 if resp.status_code == 429:
@@ -50,6 +99,18 @@ class ClaudeProCollector:
                         status="error",
                         error=f"Non-JSON response (HTTP {resp.status_code}): {resp.text[:200]}",
                     )
+        except httpx.HTTPStatusError as e:
+            body = ""
+            try:
+                body = e.response.text[:300]
+            except Exception:
+                pass
+            return ProviderSnapshot(
+                provider_id=self.provider_id,
+                plan_name="Claude Pro",
+                status="error",
+                error=f"Anthropic API error (HTTP {e.response.status_code}): {body}",
+            )
         except Exception as e:
             return ProviderSnapshot(
                 provider_id=self.provider_id,
@@ -117,4 +178,5 @@ class ClaudeProCollector:
         )
 
     async def health_check(self) -> bool:
-        return bool(self._token)
+        creds = _read_credentials()
+        return creds is not None and bool(creds.get("accessToken"))

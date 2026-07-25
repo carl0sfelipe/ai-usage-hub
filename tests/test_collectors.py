@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from unittest.mock import patch
 
 import httpx
@@ -152,17 +153,24 @@ class TestGLMProCollector:
 
 @pytest.mark.asyncio
 class TestClaudeProCollector:
+    # ClaudeProCollector reads OAuth credentials from ~/.claude/.credentials.json
+    # (not the vault, unlike the other collectors), so these tests mock
+    # collectors.claude_pro._read_credentials instead of get_vault_credential.
+
     async def test_fetch_no_token_returns_error(self):
         from collectors.claude_pro import ClaudeProCollector
 
-        with patch("collectors.claude_pro.get_vault_credential", return_value=""):
+        with patch("collectors.claude_pro._read_credentials", return_value=None):
             collector = ClaudeProCollector({})
             snapshot = await collector.fetch()
             assert snapshot.status == "error"
-            assert "TOKEN not found" in snapshot.error
+            assert "token" in snapshot.error.lower()
 
-    @patch("collectors.vault.get_vault_credential", return_value="fake_token")
-    async def test_fetch_returns_snapshot(self, mock_vault):
+    @patch(
+        "collectors.claude_pro._read_credentials",
+        return_value={"accessToken": "fake_token", "expiresAt": (time.time() + 3600) * 1000},
+    )
+    async def test_fetch_returns_snapshot(self, mock_creds):
         from collectors.claude_pro import ClaudeProCollector
 
         resp = {
@@ -181,8 +189,11 @@ class TestClaudeProCollector:
             assert len(snapshot.limits) == 1
             assert snapshot.limits[0].usage_percent == 10.0
 
-    @patch("collectors.vault.get_vault_credential", return_value="fake_token")
-    async def test_fetch_handles_rate_limit(self, mock_vault):
+    @patch(
+        "collectors.claude_pro._read_credentials",
+        return_value={"accessToken": "fake_token", "expiresAt": (time.time() + 3600) * 1000},
+    )
+    async def test_fetch_handles_rate_limit(self, mock_creds):
         from collectors.claude_pro import ClaudeProCollector
 
         async def mock_get(self, url, **kwargs):
@@ -194,8 +205,11 @@ class TestClaudeProCollector:
             assert snapshot.status == "error"
             assert "Rate limited" in snapshot.error
 
-    @patch("collectors.vault.get_vault_credential", return_value="fake_token")
-    async def test_fetch_fallback_usage_percent(self, mock_vault):
+    @patch(
+        "collectors.claude_pro._read_credentials",
+        return_value={"accessToken": "fake_token", "expiresAt": (time.time() + 3600) * 1000},
+    )
+    async def test_fetch_fallback_usage_percent(self, mock_creds):
         from collectors.claude_pro import ClaudeProCollector
 
         resp = {"usage_percent": 75.0, "reset_at": "2026-07-22T18:00:00Z"}

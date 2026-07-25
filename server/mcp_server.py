@@ -16,6 +16,7 @@ from collectors.opencode_go import OpenCodeGoCollector
 from collectors.glm_pro import GLMProCollector
 from collectors.claude_pro import ClaudeProCollector
 from collectors.local_tracker import LocalTokenTracker
+from collectors.openrouter import OpenRouterCollector
 from server.cache import SnapshotCache
 from server.scheduler import Scheduler
 from server.forecast import Forecaster, forecast_to_dict
@@ -43,6 +44,8 @@ def build_collectors(config: dict) -> list:
             collectors.append(GLMProCollector(pcfg))
         elif pid == "claude_pro":
             collectors.append(ClaudeProCollector(pcfg))
+        elif pid == "openrouter":
+            collectors.append(OpenRouterCollector(pcfg))
     return collectors
 
 

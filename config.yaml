@@ -21,6 +21,11 @@ providers:
     enabled: true
     base_url: "https://api.z.ai"
     priority: 2
+  openrouter:
+    enabled: true
+    base_url: "https://openrouter.ai/api/v1"
+    auth_path: "~/.local/share/opencode/auth.json"
+    priority: 2
   claude_pro:
     enabled: true
     priority: 3

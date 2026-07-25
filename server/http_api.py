@@ -42,12 +42,14 @@ def read_observations(path: Path) -> list[dict]:
     return records
 
 
-def find_recent_bad_observation(path: Path, provider: str) -> dict | None:
+def find_recent_bad_observation(
+    path: Path, provider: str, kinds: tuple[str, ...] = ("rate_limit", "balance")
+) -> dict | None:
     cutoff = datetime.now() - timedelta(minutes=RECOMMENDATION_LOOKBACK_MINUTES)
     for record in reversed(read_observations(path)):
         if record.get("provider") != provider:
             continue
-        if record.get("kind") not in ("rate_limit", "balance"):
+        if record.get("kind") not in kinds:
             continue
         try:
             ts = datetime.fromisoformat(record["timestamp"])
@@ -68,6 +70,39 @@ async def handle_status(request: web.Request) -> web.Response:
 async def handle_recommendation(request: web.Request) -> web.Response:
     app = request.app
     snapshots = await fetch_all(app["collectors"], app["cache"])
+    queried_provider = request.query.get("provider")
+
+    if queried_provider:
+        scoped_rec = app["scheduler"].recommend(snapshots, [queried_provider])
+        if scoped_rec.provider == queried_provider:
+            action = scoped_rec.action
+            message = scoped_rec.message
+            target_provider = scoped_rec.target_provider
+            minutes_to_reset = scoped_rec.minutes_to_reset
+        else:
+            action = "use"
+            message = f"{queried_provider} has no active data available."
+            target_provider = None
+            minutes_to_reset = None
+
+        bad_obs = find_recent_bad_observation(
+            app["observations_file"], queried_provider, kinds=("rate_limit", "balance", "key_limit")
+        )
+        if bad_obs is not None:
+            action = "wait"
+            message = (
+                f"{queried_provider} reported {bad_obs['kind']} "
+                f"({bad_obs.get('message', 'no details')}) via observation. {message}"
+            )
+
+        return web.json_response({
+            "action": action,
+            "provider": queried_provider,
+            "message": message,
+            "target_provider": target_provider,
+            "minutes_to_reset": minutes_to_reset,
+        })
+
     rec = app["scheduler"].recommend(snapshots, app["priority"])
 
     action = rec.action

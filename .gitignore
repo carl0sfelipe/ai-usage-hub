@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 *.db
+observations.jsonl
 .env
 .ai-usage-hub/
 .pytest_cache/

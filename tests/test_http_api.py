@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -126,3 +127,53 @@ async def test_recommendation_unaffected_without_observation(client):
     resp = await client.get("/recommendation")
     body = await resp.json()
     assert body["action"] == "use"
+
+
+async def test_recommendation_keeps_old_format_without_provider_param(client):
+    resp = await client.get("/recommendation")
+    assert resp.status == 200
+    body = await resp.json()
+    assert set(body.keys()) == {"action", "provider", "message", "target_provider", "minutes_to_reset"}
+
+
+async def test_recommendation_with_provider_param_wait_on_recent_rate_limit(client):
+    await client.post("/observation", json={
+        "provider": "test_provider",
+        "kind": "rate_limit",
+        "message": "429 received",
+    })
+    resp = await client.get("/recommendation", params={"provider": "test_provider"})
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["action"] == "wait"
+    assert body["provider"] == "test_provider"
+    assert "rate_limit" in body["message"]
+
+
+async def test_post_observation_uses_server_timestamp(client, monkeypatch):
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 1, 1, 12, 0, 0)
+
+    monkeypatch.setattr("server.http_api.datetime", _FixedDatetime)
+    resp = await client.post("/observation", json={
+        "provider": "x", "kind": "ok", "timestamp": "2000-01-01T00:00:00",
+    })
+    body = await resp.json()
+    assert body["timestamp"] == "2026-01-01T12:00:00"
+
+
+async def test_post_observation_rejects_non_object_body(client):
+    resp = await client.post("/observation", data=json.dumps([1, 2, 3]), headers={"Content-Type": "application/json"})
+    assert resp.status == 400
+
+
+async def test_post_observation_truncates_long_message(client):
+    long_message = "x" * 5000
+    resp = await client.post("/observation", json={
+        "provider": "x", "kind": "ok", "message": long_message,
+    })
+    assert resp.status == 200
+    body = await resp.json()
+    assert len(body["message"]) == 500

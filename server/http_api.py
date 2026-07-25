@@ -18,6 +18,7 @@ from server.mcp_server import load_config, build_collectors, fetch_all
 
 VALID_OBSERVATION_KINDS = {"rate_limit", "balance", "key_limit", "ok"}
 RECOMMENDATION_LOOKBACK_MINUTES = 15
+OBSERVATION_MESSAGE_MAX_LENGTH = 500
 
 
 def get_observations_path() -> Path:
@@ -162,6 +163,9 @@ async def handle_observation(request: web.Request) -> web.Response:
     except json.JSONDecodeError:
         return web.json_response({"error": "Invalid JSON body."}, status=400)
 
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "Request body must be a JSON object."}, status=400)
+
     provider = payload.get("provider")
     kind = payload.get("kind")
 
@@ -172,19 +176,27 @@ async def handle_observation(request: web.Request) -> web.Response:
             "error": f"Invalid 'kind': {kind!r}. Must be one of {sorted(VALID_OBSERVATION_KINDS)}.",
         }, status=400)
 
+    message = payload.get("message")
+    if isinstance(message, str) and len(message) > OBSERVATION_MESSAGE_MAX_LENGTH:
+        message = message[:OBSERVATION_MESSAGE_MAX_LENGTH]
+
     record = {
         "provider": provider,
         "model": payload.get("model"),
         "kind": kind,
-        "message": payload.get("message"),
+        "message": message,
         "source": payload.get("source"),
         "timestamp": datetime.now().isoformat(),
     }
 
     path = request.app["observations_file"]
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as f:
-        f.write(json.dumps(record) + "\n")
+    line = (json.dumps(record) + "\n").encode("utf-8")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.write(fd, line)
+    finally:
+        os.close(fd)
 
     return web.json_response(record)
 

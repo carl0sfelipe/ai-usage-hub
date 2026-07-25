@@ -90,10 +90,16 @@ async def handle_recommendation(request: web.Request) -> web.Response:
         )
         if bad_obs is not None:
             action = "wait"
-            message = (
-                f"{queried_provider} reported {bad_obs['kind']} "
-                f"({bad_obs.get('message', 'no details')}) via observation. {message}"
-            )
+            if minutes_to_reset is None:
+                message = (
+                    f"{queried_provider} reported {bad_obs['kind']} "
+                    f"({bad_obs.get('message', 'no details')}) via observation, reset time unknown. {message}"
+                )
+            else:
+                message = (
+                    f"{queried_provider} reported {bad_obs['kind']} "
+                    f"({bad_obs.get('message', 'no details')}) via observation. {message}"
+                )
 
         return web.json_response({
             "action": action,
@@ -108,19 +114,26 @@ async def handle_recommendation(request: web.Request) -> web.Response:
     action = rec.action
     message = rec.message
     bad_obs = find_recent_bad_observation(app["observations_file"], rec.provider)
+    minutes_to_reset = rec.minutes_to_reset
     if bad_obs is not None:
         action = "wait"
-        message = (
-            f"{rec.provider} reported {bad_obs['kind']} "
-            f"({bad_obs.get('message', 'no details')}) via observation. {message}"
-        )
+        if minutes_to_reset is None:
+            message = (
+                f"{rec.provider} reported {bad_obs['kind']} "
+                f"({bad_obs.get('message', 'no details')}) via observation, reset time unknown. {message}"
+            )
+        else:
+            message = (
+                f"{rec.provider} reported {bad_obs['kind']} "
+                f"({bad_obs.get('message', 'no details')}) via observation. {message}"
+            )
 
     return web.json_response({
         "action": action,
         "provider": rec.provider,
         "message": message,
         "target_provider": rec.target_provider,
-        "minutes_to_reset": rec.minutes_to_reset,
+        "minutes_to_reset": minutes_to_reset,
     })
 
 
